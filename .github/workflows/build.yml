@@ -1,0 +1,72 @@
+name: Build
+
+run-name: ${{ inputs.attribute }} at ${{ inputs.repository }}@${{ inputs.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Nixpkgs repository to check out
+        required: true
+        default: yzhou216/nixpkgs
+      ref:
+        description: Branch, tag, or commit to build
+        required: true
+      attribute:
+        description: Package attribute to build
+        required: true
+
+permissions: {}
+
+jobs:
+  build:
+    name: ${{ inputs.attribute }} on aarch64-darwin
+    runs-on: macos-14
+    timeout-minutes: 300
+    steps:
+      - name: Check out tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ci
+          persist-credentials: false
+
+      - name: Check out nixpkgs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          path: nixpkgs
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          # Sandbox is disabled on macOS by default.
+          extra_nix_config: sandbox = true
+
+      - name: Build
+        env:
+          ATTRIBUTE: ${{ inputs.attribute }}
+        run: |
+          nix-build nixpkgs --attr "$ATTRIBUTE" --out-link result
+          nix --extra-experimental-features nix-command \
+            path-info --closure-size --human-readable ./result
+
+      - name: Test
+        env:
+          ATTRIBUTE: ${{ inputs.attribute }}
+        run: |
+          mkdir artifacts
+          test="ci/tests/$ATTRIBUTE.sh"
+          if [ -f "$test" ]; then
+            bash "$test" "$(readlink result)" artifacts
+          else
+            echo "No test script for $ATTRIBUTE"
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.attribute }}
+          path: artifacts
+          if-no-files-found: ignore
