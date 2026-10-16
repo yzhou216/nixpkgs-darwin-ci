@@ -46,6 +46,7 @@ jobs:
       - name: Build
         env:
           ATTRIBUTE: ${{ inputs.attribute }}
+          NIXPKGS_ALLOW_UNFREE: 1
         run: |
           nix-build nixpkgs --attr "$ATTRIBUTE" --out-link result
           nix --extra-experimental-features nix-command \
